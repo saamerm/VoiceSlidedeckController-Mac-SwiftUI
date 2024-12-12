@@ -11,7 +11,11 @@ import SwiftUI
 struct VoiceSlidedeckControllerApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+//            ContentView()
+            SlideChangerView()
+        }
+        .commands {
+            CommandGroup(replacing: .newItem) {} // Disable unnecessary UI commands
         }
     }
 }
