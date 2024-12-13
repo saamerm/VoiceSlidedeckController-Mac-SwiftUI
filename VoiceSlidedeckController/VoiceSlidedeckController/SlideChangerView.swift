@@ -19,40 +19,91 @@ struct SlideChangerView: View {
     private var recognizer: SFSpeechRecognizer?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var audioEngine = AVAudioEngine()
-    
+    @State var numberOfLeftMatches = 0
+    @State var numberOfRightMatches = 0
     init() {
         var locale = Locale(identifier: "en-US")
         recognizer = SFSpeechRecognizer(locale: locale)
     }
-//    @StateObject private var speechRecognizer = SpeechRecognizer()
 
     var body: some View {
-        VStack {
+        VStack(spacing: 20) {
             Text("Slide Deck Automator")
-                .font(.headline)
-            Text("Transcript")
-            Text(transcript)
-                .padding()
-            Button(action: {
-                startListening()
-            }) {
-                Text("Start Listening")
+                .font(.system(size: 24, weight: .bold, design: .default))
+                .foregroundColor(.primary)
+                .padding(.bottom, 10)
+            Spacer()
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Live Transcript")
+                    .font(.system(size: 18, weight: .semibold, design: .default))
+                    .foregroundColor(.secondary)
+
+                ScrollView {
+                    Text(transcript.isEmpty ? "Transcript will appear here..." : transcript)
+                        .font(.system(size: 16, weight: .regular, design: .default))
+                        .foregroundColor(transcript.isEmpty ? .secondary : .primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(Color(.secondarySystemFill))
+                        .cornerRadius(8)
+                }
+                .frame(height: 100)
             }
-            .disabled(isListening)
-            
-            Button(action: {
-                stopListening()
-            }) {
-                Text("Stop Listening")
+            if !AXIsProcessTrusted(){
+                Text("Make sure System Preferences > Security & Privacy > Privacy > Accessibility is enabled")
+                    .font(.system(size: 16, weight: .regular, design: .default))
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(alignment: .leading)
             }
-            .disabled(!isListening)
-            Text("Words to accept for going to the next slide")
-            TextField("Comma separated. Eg: 'next, next slide, right, ...'", text: $nextSlide)
-            Text("Words to accept for going to the previous slide")
-            TextField("Comma separated. Eg: 'previous, previous slide, left, ...'", text: $previousSlide)
+            HStack(spacing: 20) {
+                if !isListening{
+                    Button(action: startListening) {
+                        Text("Start Listening")
+                            .font(.system(size: 16, weight: .medium, design: .default))
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(isListening ? Color.gray : Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+                    .disabled(isListening)
+                } else {
+                    Button(action: stopListening) {
+                        Text("Stop Listening")
+                            .font(.system(size: 16, weight: .medium, design: .default))
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(isListening ? Color.red : Color.gray)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+                    .disabled(!isListening)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Commands for Next Slide")
+                    .font(.system(size: 18, weight: .semibold, design: .default))
+                    .foregroundColor(.secondary)
+
+                TextField("Comma-separated commands (e.g., 'next, next slide, right')", text: $nextSlide)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.bottom, 10)
+
+                Text("Commands for Previous Slide")
+                    .font(.system(size: 18, weight: .semibold, design: .default))
+                    .foregroundColor(.secondary)
+
+                TextField("Comma-separated commands (e.g., 'previous, previous slide, left')", text: $previousSlide)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+            }
+
+            Spacer()
         }
         .padding()
-        .frame(minWidth: 300, minHeight: 200)
+        .background(Color(.secondarySystemFill))
+        .frame(minWidth: 400, minHeight: 500)
         .onReceive(timer) { input in
             shouldChange = true
         }
@@ -97,16 +148,16 @@ struct SlideChangerView: View {
                 self.transcript = result.bestTranscription.formattedString
                 if result.speechRecognitionMetadata == nil {
                     self.handleSpeechCommand(self.transcript)
+                } else {
+                    numberOfLeftMatches = 0
+                    numberOfRightMatches = 0
                 }
             }
             guard let result = result else {
                 print("There was an error transcribing that file")
                 print("print \(error!.localizedDescription)")
-                return
-            }
-
-            if error != nil {
                 self.stopListening()
+                return
             }
         }
     }
@@ -120,16 +171,21 @@ struct SlideChangerView: View {
     }
     
     private func handleSpeechCommand(_ command: String) {
-        print(command)
-
         let normalizedCommand = command.lowercased()
         let rightCommandList = nextSlide.lowercased().split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         let leftCommandList = previousSlide.lowercased().split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let wordsInCommand = normalizedCommand.split(separator: " ").map { $0.lowercased() }
+        let rightMatchesCount = wordsInCommand.filter { rightCommandList.contains($0) }.count
+        let leftMatchesCount = wordsInCommand.filter { leftCommandList.contains($0) }.count
 
-        if rightCommandList.contains(where: { normalizedCommand.contains($0) }) {
+        if rightMatchesCount > 0 && rightMatchesCount > numberOfRightMatches{
+            print("Right matches: \(rightMatchesCount)")
             simulateKeyPress(key: .rightArrow)
-        } else if leftCommandList.contains(where: { normalizedCommand.contains($0) }) {
+            numberOfRightMatches = numberOfRightMatches + 1
+        } else if leftMatchesCount > 0  && leftMatchesCount > numberOfLeftMatches {
+            print("Left matches: \(leftMatchesCount)")
             simulateKeyPress(key: .leftArrow)
+            numberOfLeftMatches = numberOfLeftMatches + 1
         }
     }
 
