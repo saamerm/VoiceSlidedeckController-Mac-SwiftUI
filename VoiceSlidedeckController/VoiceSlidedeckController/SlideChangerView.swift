@@ -10,6 +10,10 @@ import SwiftUI
 import Speech
 
 struct SlideChangerView: View {
+    @AppStorage("PostSummaryBody") var postSummaryBody = ""
+    @AppStorage("EmailAddresses") var emailAddresses = ""
+    @AppStorage("SmsMinutes") var smsMinutes = 0
+
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State var recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
     @State var transcript: String = ""
@@ -336,7 +340,7 @@ struct SlideChangerView: View {
     func useVoiceToSendEmail(){
 //        print("Simulated email")
         Task{
-            await uploadEmail(completeTranscript)
+            await uploadEmail(completeTranscript + "\n" + postSummaryBody, emailAddresses: emailAddresses, smsMinutes: smsMinutes)
         }
     }
 
