@@ -13,7 +13,7 @@ struct SlideChangerView: View {
     @AppStorage("PostSummaryBody") var postSummaryBody = ""
     @AppStorage("EmailAddresses") var emailAddresses = ""
     @AppStorage("SmsMinutes") var smsMinutes = 0
-
+    @State var tempMessage = ""
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State var recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
     @State var transcript: String = ""
@@ -150,7 +150,17 @@ struct SlideChangerView: View {
                         }
                         Button(action: {
                             Task{
-                                await uploadEmail(completeTranscript + "\n" + postSummaryBody, emailAddresses: emailAddresses, smsMinutes: smsMinutes)
+                                var status = await uploadEmail(completeTranscript + "\n" + postSummaryBody, emailAddresses: emailAddresses, smsMinutes: smsMinutes)
+                                withAnimation {
+                                    tempMessage = status
+                                }
+
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                                    // 7.
+                                    withAnimation {
+                                        tempMessage = ""
+                                    }
+                                }
                             }
                         }) {
                             Text("Email")
@@ -164,6 +174,10 @@ struct SlideChangerView: View {
                         }
                     }
                 }
+                Text(tempMessage)
+                    .padding()
+                    .font(Font.custom("Avenir", size: 16))
+                    .foregroundColor(.secondary)
             }
             .padding()
             .background(Color("SecondarySystemFill"))
@@ -340,7 +354,17 @@ struct SlideChangerView: View {
     func useVoiceToSendEmail(){
 //        print("Simulated email")
         Task{
-            await uploadEmail(completeTranscript + "\n" + postSummaryBody, emailAddresses: emailAddresses, smsMinutes: smsMinutes)
+            var status = await uploadEmail(completeTranscript + "\n" + postSummaryBody, emailAddresses: emailAddresses, smsMinutes: smsMinutes)
+            withAnimation {
+                tempMessage = status
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                // 7.
+                withAnimation {
+                    tempMessage = ""
+                }
+            }
         }
     }
 
