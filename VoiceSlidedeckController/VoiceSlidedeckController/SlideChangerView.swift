@@ -11,6 +11,7 @@ import Speech
 
 struct SlideChangerView: View {
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    @State var recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
     @State var transcript: String = ""
     @State var previouslyRecognizedTranscript = ""
     @State var completeTranscript = ""
@@ -23,7 +24,7 @@ struct SlideChangerView: View {
     @State var shouldChange = true
     @State var speechSecondsTimer = 0
     private var recognizer: SFSpeechRecognizer?
-    private var recognitionTask: SFSpeechRecognitionTask?
+    @State var recognitionTask: SFSpeechRecognitionTask?
     private var audioEngine = AVAudioEngine()
     @State var numberOfLeftMatches = 0
     @State var numberOfRightMatches = 0
@@ -32,8 +33,8 @@ struct SlideChangerView: View {
     @State var machine = "" // To track command counts
 
     init() {
-        var locale = Locale.current //  Locale(identifier: "en-US")
-        recognizer = SFSpeechRecognizer(locale: locale)
+        // Locale(identifier: "en-US")
+        recognizer = SFSpeechRecognizer(locale: Locale.current)
     }
 
     var body: some View {
@@ -42,7 +43,7 @@ struct SlideChangerView: View {
                 Text("Presentation Whisperer")
                     .font(.system(size: 24, weight: .bold, design: .default))
                     .padding(.bottom, 5)
-                Text("Use this tool to automatically switch slides based on your speech. If you have MacOS 15.2 or later, you can also use the summary functionality.")
+                Text("Use this tool to automatically switch slides based on your speech. If you have MacOS 15.1 or later, you can also use the summary functionality.")
                     .font(.system(size: 12, design: .default))
                     .padding(.bottom, 10)
                 VStack(alignment: .leading, spacing: 10) {
@@ -62,11 +63,16 @@ struct SlideChangerView: View {
                     .frame(height: 100)
                 }
                 if !AXIsProcessTrusted(){
-                    Text("Make sure System Preferences > Security & Privacy > Privacy > Accessibility is enabled")
-                        .font(.system(size: 16, weight: .regular, design: .default))
-                        .foregroundColor(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(alignment: .leading)
+                    HStack{
+                        Text("Make sure System Preferences > Security & Privacy > Privacy > Accessibility is enabled")
+                            .font(.system(size: 16, weight: .regular, design: .default))
+                            .foregroundColor(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(alignment: .leading)
+                        Button("Open Settings") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                        }
+                    }
                 }
                 HStack(spacing: 20) {
                     if !isListening{
@@ -135,20 +141,23 @@ struct SlideChangerView: View {
 //                                Text(machine)
 //                            }
                         }
-//                        else {
-//                            Text("macOS below 15.1")
-//                        }
-//                        Button(action: {
-//                            Task{
-//                                await uploadEmail(completeTranscript)
-//                            }
-//                        }) {
-//                            Text("Email")
-//                                .font(.system(size: 16, weight: .medium, design: .default))
-//                                .frame(maxWidth: .infinity)
-//                                .padding()
-//                                .cornerRadius(8)
-//                        }
+                        else {
+                            Text("Your Mac doesn't support summarization because it is not M1 or it is not running macOS 15.1 or later.")
+                        }
+                        Button(action: {
+                            Task{
+                                await uploadEmail(completeTranscript + "\n" + postSummaryBody, emailAddresses: emailAddresses, smsMinutes: smsMinutes)
+                            }
+                        }) {
+                            Text("Email")
+                                .font(.system(size: 16, weight: .medium, design: .default))
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .cornerRadius(8)
+                        }
+                        NavigationLink(destination: EmailSettingsView()) {
+                            Image(systemName: "gear")
+                        }
                     }
                 }
             }
@@ -180,6 +189,13 @@ struct SlideChangerView: View {
     }
     
     func startListening() {
+        if #available(macOS 14.0, *) {
+            AVAudioApplication.requestRecordPermission(completionHandler: {h in
+//                print(AVAudioApplication.shared.isInputMuted)
+            })
+        } else {
+            // Fallback on earlier versions
+        }
         speechSecondsTimer = 0
         guard !isListening else { return }
         isListening = true
@@ -197,7 +213,7 @@ struct SlideChangerView: View {
     }
     
     private func startRecognition() {
-        let recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
+        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         let inputNode = audioEngine.inputNode
         recognitionRequest.shouldReportPartialResults = true //
 //        recognitionRequest.requiresOnDeviceRecognition = false // Setting to true, erases everything. Setting to false keeps it going. And then speechRecognitionMetadata always stays nil
@@ -217,7 +233,13 @@ struct SlideChangerView: View {
                 completeTranscript = transcript
             }
         }
-        recognizer?.recognitionTask(with: recognitionRequest) { result, error in
+        recognizer?.defaultTaskHint = .dictation
+
+        guard let recognizer = SFSpeechRecognizer(locale: Locale.current) else {
+            return
+        }
+
+        var recognitionTask = recognizer.recognitionTask(with: recognitionRequest) { (result, error) in
             if let result = result {
                 self.transcript = result.bestTranscription.formattedString
                 if transcript.isEmpty {
@@ -249,8 +271,10 @@ struct SlideChangerView: View {
     
     func stopListening() {
         isListening = false
+        recognitionTask?.finish()
         recognitionTask?.cancel()
-//        recognitionTask = nil
+        recognitionTask = nil
+        recognitionRequest.endAudio()
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
     }
